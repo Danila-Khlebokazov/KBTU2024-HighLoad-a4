@@ -1,0 +1,62 @@
+services:
+  redis:
+    image: redis:7.4.0
+    ports:
+      - "6379:6379"
+
+  smtp4dev:
+    image: rnwood/smtp4dev
+    ports:
+      - "3000:80"
+      - "2525:25"
+
+  clamav:
+    image: clamav/clamav:stable
+    platform: linux/amd64
+    volumes:
+      - clamav-socket:/var/run/clamav
+    ports:
+      - "3310:3310"
+    environment:
+      - CLAMD_START_MODE=daemon
+
+  postgres:
+    image: postgres:17.0-alpine3.20
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - ./postgres/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+
+  server: &server
+    build:
+      context: ./main
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./main/media:/app/media
+      - clamav-socket:/var/run/clamav
+    depends_on:
+      - redis
+      - smtp4dev
+      - clamav
+
+  celery-worker:
+    <<: *server
+    command: celery -A main worker --loglevel=info -B
+    ports: [ ]
+
+  celery-flower:
+    <<: *server
+    command: celery -A main flower
+    ports:
+      - "5555:5555"
+
+volumes:
+  postgres_data:
+  clamav-socket:
